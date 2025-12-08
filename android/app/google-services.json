@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "634618968992",
+    "project_id": "way2sustain-e0558",
+    "storage_bucket": "way2sustain-e0558.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:634618968992:android:620787f8d1fe63feb742c5",
+        "android_client_info": {
+          "package_name": "com.JAMB.way2sustain"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD7Mz3_a_SuDzirTS-0hvMjW47Q7Pv24sI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
