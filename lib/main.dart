@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'splash_screen.dart'; // Make sure this imports the correct file
+import 'splash_screen.dart';
 import 'auth/login_page.dart';
-import 'home/home_page.dart';
+import 'home/home_page.dart'; // Add this import
 import 'providers/auth_provider.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+void main() {
   runApp(const MyApp());
 }
 
@@ -33,9 +30,14 @@ class MyApp extends StatelessWidget {
         home: const SplashScreen(),
         routes: {
           '/login': (context) => const LoginPage(),
-          '/home': (context) => const HomePage(),
+          '/home': (context) => const HomePage(), // Fixed: Use HomePage widget
         },
       ),
     );
   }
 }
+
+// Remove or comment out the incorrect home_page class
+// class home_page {
+//   const home_page();
+// }
