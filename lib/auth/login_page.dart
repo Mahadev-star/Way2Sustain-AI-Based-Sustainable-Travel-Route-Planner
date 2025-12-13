@@ -24,13 +24,117 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFF43A047),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: const Color(0xFF43A047),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _loginWithEmail(BuildContext context) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      _showSnackBar(context, 'Please fill in all fields');
+      return;
+    }
+
+    try {
+      await authProvider.loginWithEmail(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+
+      if (mounted) {
+        if (authProvider.error != null) {
+          // ignore: use_build_context_synchronously
+          _showSnackBar(context, authProvider.error!);
+        } else if (authProvider.isAuthenticated) {
+          // ignore: use_build_context_synchronously
+          _showSnackBar(context, 'Login successful!');
+          // ignore: use_build_context_synchronously
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        // ignore: use_build_context_synchronously
+        _showSnackBar(context, 'Login failed. Please try again.');
+      }
+    }
+  }
+
+  Future<void> _loginWithGoogle(BuildContext context) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    try {
+      await authProvider.signInWithGoogle();
+
+      if (mounted) {
+        if (authProvider.error != null) {
+          // ignore: use_build_context_synchronously
+          _showSnackBar(context, authProvider.error!);
+        } else if (authProvider.isAuthenticated) {
+          // ignore: use_build_context_synchronously
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        // ignore: use_build_context_synchronously
+        _showSnackBar(context, 'Google login failed. Please try again.');
+      }
+    }
+  }
+
+  Future<void> _loginWithFacebook(BuildContext context) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    try {
+      await authProvider.signInWithFacebook();
+
+      if (mounted) {
+        if (authProvider.error != null) {
+          // ignore: use_build_context_synchronously
+          _showSnackBar(context, authProvider.error!);
+        } else if (authProvider.isAuthenticated) {
+          // ignore: use_build_context_synchronously
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        // ignore: use_build_context_synchronously
+        _showSnackBar(context, 'Facebook login failed. Please try again.');
+      }
+    }
+  }
+
+  Future<void> _loginAsGuest(BuildContext context) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    try {
+      await authProvider.loginAsGuest();
+
+      if (mounted) {
+        if (authProvider.error != null) {
+          // ignore: use_build_context_synchronously
+          _showSnackBar(context, authProvider.error!);
+        } else {
+          // ignore: use_build_context_synchronously
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        // ignore: use_build_context_synchronously
+        _showSnackBar(context, 'Guest login failed. Please try again.');
+      }
+    }
   }
 
   @override
@@ -204,35 +308,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: ElevatedButton(
                       onPressed: authProvider.isLoading
                           ? null
-                          : () async {
-                              if (_emailController.text.isEmpty ||
-                                  _passwordController.text.isEmpty) {
-                                _showSnackBar(
-                                  context,
-                                  'Please fill in all fields',
-                                );
-                                return;
-                              }
-
-                              await authProvider.loginWithEmail(
-                                email: _emailController.text,
-                                password: _passwordController.text,
-                              );
-
-                              if (authProvider.error != null) {
-                                // ignore: use_build_context_synchronously
-                                _showSnackBar(context, authProvider.error!);
-                              } else if (authProvider.isAuthenticated) {
-                                // ignore: use_build_context_synchronously
-                                _showSnackBar(context, 'Login successful!');
-                                // ignore: use_build_context_synchronously
-                                Navigator.pushReplacementNamed(
-                                  // ignore: use_build_context_synchronously
-                                  context,
-                                  '/home',
-                                );
-                              }
-                            },
+                          : () => _loginWithEmail(context),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF43A047),
                         shape: RoundedRectangleBorder(
@@ -328,20 +404,7 @@ class _LoginPageState extends State<LoginPage> {
                         child: ElevatedButton(
                           onPressed: authProvider.isLoading
                               ? null
-                              : () async {
-                                  await authProvider.signInWithGoogle();
-                                  if (authProvider.error != null) {
-                                    // ignore: use_build_context_synchronously
-                                    _showSnackBar(context, authProvider.error!);
-                                  } else if (authProvider.isAuthenticated) {
-                                    // ignore: use_build_context_synchronously
-                                    Navigator.pushReplacementNamed(
-                                      // ignore: use_build_context_synchronously
-                                      context,
-                                      '/home',
-                                    );
-                                  }
-                                },
+                              : () => _loginWithGoogle(context),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.grey[900],
                             shape: RoundedRectangleBorder(
@@ -374,20 +437,7 @@ class _LoginPageState extends State<LoginPage> {
                         child: ElevatedButton(
                           onPressed: authProvider.isLoading
                               ? null
-                              : () async {
-                                  await authProvider.signInWithFacebook();
-                                  if (authProvider.error != null) {
-                                    // ignore: use_build_context_synchronously
-                                    _showSnackBar(context, authProvider.error!);
-                                  } else if (authProvider.isAuthenticated) {
-                                    // ignore: use_build_context_synchronously
-                                    Navigator.pushReplacementNamed(
-                                      // ignore: use_build_context_synchronously
-                                      context,
-                                      '/home',
-                                    );
-                                  }
-                                },
+                              : () => _loginWithFacebook(context),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.grey[900],
                             shape: RoundedRectangleBorder(
@@ -427,20 +477,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: ElevatedButton(
                       onPressed: authProvider.isLoading
                           ? null
-                          : () async {
-                              await authProvider.loginAsGuest();
-                              if (authProvider.error != null) {
-                                // ignore: use_build_context_synchronously
-                                _showSnackBar(context, authProvider.error!);
-                              } else {
-                                // ignore: use_build_context_synchronously
-                                Navigator.pushReplacementNamed(
-                                  // ignore: use_build_context_synchronously
-                                  context,
-                                  '/home',
-                                );
-                              }
-                            },
+                          : () => _loginAsGuest(context),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.grey[900],
                         shape: RoundedRectangleBorder(
