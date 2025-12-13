@@ -12,25 +12,32 @@ class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
+  late Animation<double> _carAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    // Setup animation for 3 seconds
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
     );
 
-    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    _animation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+    // Separate animation for car to start from center and grow
+    _carAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.8, curve: Curves.easeOut),
+      ),
     );
 
-    // Start the animation
     _controller.forward();
 
-    // Navigate to login page after animation completes
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         Future.delayed(const Duration(milliseconds: 500), () {
@@ -54,25 +61,20 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
-    const double carWidth = 50.0;
+    const double carWidth = 70.0; // Increased from 50 to 70
+    const double carHeight = 70.0; // Increased height
     const Color brandGreen = Color(0xFF43A047);
 
     return Scaffold(
       backgroundColor: const Color(0xFF151717),
       body: Stack(
         children: [
-          // Animated Background Particles
           Positioned.fill(
-            child: CustomPaint(
-              painter: ParticlePainter(_controller.value),
-            ),
+            child: CustomPaint(painter: ParticlePainter(_controller.value)),
           ),
 
-          // Wind lines
           Positioned.fill(
-            child: CustomPaint(
-              painter: WindLinesPainter(_controller.value),
-            ),
+            child: CustomPaint(painter: WindLinesPainter(_controller.value)),
           ),
 
           Column(
@@ -80,7 +82,6 @@ class _SplashScreenState extends State<SplashScreen>
             children: [
               const Spacer(flex: 3),
 
-              // Logo Section
               AnimatedBuilder(
                 animation: _controller,
                 builder: (context, child) {
@@ -101,15 +102,18 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                         ],
                       ),
-                      child:
-                          const Icon(Icons.eco, size: 60, color: Colors.white),
+                      child: const Icon(
+                        Icons.eco,
+                        size: 60,
+                        color: Colors.white,
+                      ),
                     ),
                   );
                 },
               ),
+
               const SizedBox(height: 40),
 
-              // Text Section with fade-in animation
               AnimatedBuilder(
                 animation: _controller,
                 builder: (context, child) {
@@ -144,34 +148,24 @@ class _SplashScreenState extends State<SplashScreen>
 
               const Spacer(flex: 2),
 
-              // Animated Road Section
               SizedBox(
-                height: 80,
+                height: 90, // Increased height to accommodate larger car
                 width: double.infinity,
                 child: AnimatedBuilder(
-                  animation: _animation,
+                  animation: _carAnimation,
                   builder: (context, child) {
                     return Stack(
                       alignment: Alignment.centerLeft,
                       children: [
-                        // Dashed Road Line
+                        // Dashed line
                         CustomPaint(
                           size: Size(screenWidth, 2),
                           painter: DashedLinePainter(),
                         ),
 
-                        // Speed lines
-                        Positioned(
-                          left: screenWidth * _animation.value,
-                          child: CustomPaint(
-                            size: const Size(100, 40),
-                            painter: SpeedLinesPainter(_controller.value),
-                          ),
-                        ),
-
-                        // Green Progress Line
+                        // Progress bar
                         Container(
-                          width: screenWidth * _animation.value,
+                          width: screenWidth * _carAnimation.value,
                           height: 4,
                           decoration: BoxDecoration(
                             color: brandGreen,
@@ -180,114 +174,87 @@ class _SplashScreenState extends State<SplashScreen>
                                 color: brandGreen,
                                 blurRadius: 10 * _controller.value,
                                 spreadRadius: 1,
-                              )
+                              ),
                             ],
                           ),
                         ),
 
-                        // Moving Electric Car
+                        // Car container positioned at the end of progress
                         Positioned(
-                          left: (screenWidth * _animation.value) - carWidth,
+                          left:
+                              (screenWidth * _carAnimation.value) -
+                              carWidth +
+                              35, // Adjusted position
                           child: SizedBox(
                             width: carWidth,
-                            height: 40,
+                            height: carHeight,
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
-                                // Glow effect
+                                // Glow effect - increased size
                                 AnimatedBuilder(
                                   animation: _controller,
                                   builder: (context, child) {
-                                    return Container(
-                                      width: 30,
-                                      height: 30,
-                                      decoration: BoxDecoration(
-                                        // ignore: deprecated_member_use
-                                        color: brandGreen.withOpacity(
-                                            0.4 * _controller.value),
-                                        shape: BoxShape.circle,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            // ignore: deprecated_member_use
-                                            color: brandGreen.withOpacity(
-                                                0.6 * _controller.value),
-                                            blurRadius: 20 * _controller.value,
-                                            spreadRadius: 5 * _controller.value,
-                                          )
-                                        ],
+                                    return Transform.scale(
+                                      scale: 0.9 + (_carAnimation.value * 0.3),
+                                      child: Container(
+                                        width: 60, // Increased from 40
+                                        height: 60, // Increased from 40
+                                        decoration: BoxDecoration(
+                                          color: brandGreen
+                                              // ignore: deprecated_member_use
+                                              .withOpacity(
+                                                0.2 * _controller.value,
+                                              ),
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              // ignore: deprecated_member_use
+                                              color: brandGreen.withOpacity(
+                                                0.6 * _controller.value,
+                                              ),
+                                              blurRadius:
+                                                  25 *
+                                                  _controller
+                                                      .value, // Increased blur
+                                              spreadRadius:
+                                                  8 *
+                                                  _controller
+                                                      .value, // Increased spread
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     );
                                   },
                                 ),
 
-                                // Car Icon with rotating wheels
-                                Stack(
-                                  children: [
-                                    const Icon(
-                                      Icons.directions_car_filled,
-                                      color: Colors.white,
-                                      size: 40,
-                                    ),
-                                    // Front Wheel
-                                    Positioned(
-                                      left: 8,
-                                      bottom: 2,
-                                      child: AnimatedBuilder(
-                                        animation: _controller,
-                                        builder: (context, child) {
-                                          return Transform.rotate(
-                                            angle: _controller.value * 20,
-                                            child: Container(
-                                              width: 12,
-                                              height: 12,
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey[800],
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                    color: brandGreen,
-                                                    width: 1),
-                                              ),
-                                            ),
-                                          );
-                                        },
+                                // Car image with scale animation - increased size
+                                AnimatedBuilder(
+                                  animation: _carAnimation,
+                                  builder: (context, child) {
+                                    return Transform.scale(
+                                      scale: 0.8 + (_carAnimation.value * 0.4),
+                                      child: Image.asset(
+                                        'assets/images/electric_car.png',
+                                        width: 65, // Increased from 40
+                                        height: 65, // Increased from 40
+                                        fit: BoxFit.contain,
                                       ),
-                                    ),
-                                    // Rear Wheel
-                                    Positioned(
-                                      right: 8,
-                                      bottom: 2,
-                                      child: AnimatedBuilder(
-                                        animation: _controller,
-                                        builder: (context, child) {
-                                          return Transform.rotate(
-                                            angle: _controller.value * 20,
-                                            child: Container(
-                                              width: 12,
-                                              height: 12,
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey[800],
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                    color: brandGreen,
-                                                    width: 1),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ],
+                                    );
+                                  },
                                 ),
-
-                                // Electric Bolt Icon
-                                const Positioned(
-                                  right: 0,
-                                  top: 0,
-                                  child: Icon(Icons.bolt,
-                                      color: Colors.yellow, size: 16),
-                                )
                               ],
                             ),
+                          ),
+                        ),
+
+                        // Speed lines
+                        Positioned(
+                          left: screenWidth * _carAnimation.value,
+                          child: CustomPaint(
+                            size: const Size(120, 50), // Increased size
+                            painter: SpeedLinesPainter(_controller.value),
                           ),
                         ),
                       ],
@@ -296,16 +263,15 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
 
-              // Percentage Text with Count-up Effect
               AnimatedBuilder(
                 animation: _animation,
                 builder: (context, child) => Text(
                   "${(_animation.value * 100).toInt()}%",
                   style: TextStyle(
                     // ignore: deprecated_member_use
-                    color: Colors.white
-                        // ignore: deprecated_member_use
-                        .withOpacity(0.7 + (_animation.value * 0.3)),
+                    color: Colors.white.withOpacity(
+                      0.7 + (_animation.value * 0.3),
+                    ),
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
                   ),
@@ -314,7 +280,6 @@ class _SplashScreenState extends State<SplashScreen>
 
               const Spacer(flex: 2),
 
-              // "Ride with Greener" Section with fade-in
               AnimatedBuilder(
                 animation: _controller,
                 builder: (context, child) {
@@ -323,8 +288,8 @@ class _SplashScreenState extends State<SplashScreen>
                         ? (_controller.value - 0.5) * 2
                         : 0,
                     child: Column(
-                      children: [
-                        const Text(
+                      children: const [
+                        Text(
                           "Ride with Greener",
                           style: TextStyle(
                             fontSize: 20,
@@ -333,24 +298,22 @@ class _SplashScreenState extends State<SplashScreen>
                             letterSpacing: 1.1,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        SizedBox(height: 8),
                         Text(
                           "Journey to a sustainable future",
                           style: TextStyle(
-                            // ignore: deprecated_member_use
-                            color: Colors.white.withOpacity(0.6),
+                            color: Colors.white54,
                             fontSize: 14,
                             fontStyle: FontStyle.italic,
                           ),
                         ),
-                        const SizedBox(height: 30),
+                        SizedBox(height: 30),
                       ],
                     ),
                   );
                 },
               ),
 
-              // Footer Section
               Column(
                 children: [
                   Text(
@@ -365,13 +328,11 @@ class _SplashScreenState extends State<SplashScreen>
                   const SizedBox(height: 8),
                   const Text(
                     "Reducing carbon footprint, one ride at a time",
-                    style: TextStyle(
-                      color: Colors.white38,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.white38, fontSize: 12),
                   ),
                 ],
               ),
+
               const SizedBox(height: 40),
             ],
           ),
@@ -381,7 +342,6 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-// Custom painter for dashed road line
 class DashedLinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -402,7 +362,6 @@ class DashedLinePainter extends CustomPainter {
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
-// Custom painter for animated background particles
 class ParticlePainter extends CustomPainter {
   final double animationValue;
 
@@ -415,16 +374,11 @@ class ParticlePainter extends CustomPainter {
       ..color = const Color(0xFF43A047).withOpacity(0.1)
       ..style = PaintingStyle.fill;
 
-    // Draw floating particles
     for (int i = 0; i < 20; i++) {
       final x = (size.width * 0.1) + (i * 80);
       final y = 100 + (60 * i * animationValue) % size.height;
 
-      canvas.drawCircle(
-        Offset(x, y),
-        2 + (i % 4).toDouble(),
-        paint,
-      );
+      canvas.drawCircle(Offset(x, y), 2 + (i % 4).toDouble(), paint);
     }
   }
 
@@ -433,7 +387,6 @@ class ParticlePainter extends CustomPainter {
       oldDelegate.animationValue != animationValue;
 }
 
-// Custom painter for speed lines
 class SpeedLinesPainter extends CustomPainter {
   final double animationValue;
 
@@ -444,20 +397,14 @@ class SpeedLinesPainter extends CustomPainter {
     final paint = Paint()
       // ignore: deprecated_member_use
       ..color = const Color(0xFF43A047).withOpacity(0.1)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
+      ..strokeWidth = 1;
 
-    // Draw speed lines
     for (int i = 0; i < 15; i++) {
       final x = size.width - (i * 20 * animationValue);
       final y = size.height * 0.6;
       final length = 20 + (i % 5).toDouble();
 
-      canvas.drawLine(
-        Offset(x, y),
-        Offset(x - length, y),
-        paint,
-      );
+      canvas.drawLine(Offset(x, y), Offset(x - length, y), paint);
     }
   }
 
@@ -466,7 +413,6 @@ class SpeedLinesPainter extends CustomPainter {
       oldDelegate.animationValue != animationValue;
 }
 
-// Custom painter for wind lines behind car
 class WindLinesPainter extends CustomPainter {
   final double animationValue;
 
@@ -479,7 +425,6 @@ class WindLinesPainter extends CustomPainter {
       ..color = const Color(0xFF43A047).withOpacity(0.5)
       ..strokeWidth = 1;
 
-    // Draw wind lines
     for (int i = 0; i < 5; i++) {
       final x1 = size.width;
       final y1 = i * 5.0;
