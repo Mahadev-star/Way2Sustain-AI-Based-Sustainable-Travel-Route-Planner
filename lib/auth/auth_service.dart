@@ -1,58 +1,91 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+class User {
+  final String uid;
+  final String? email;
+  final String? displayName;
+  final String? photoURL;
+  final bool isGuest;
+
+  User({
+    required this.uid,
+    this.email,
+    this.displayName,
+    this.photoURL,
+    this.isGuest = false,
+  });
+}
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  final Random _random = Random();
+
+  User? _currentUser;
 
   // Get current user
-  User? get currentUser => _auth.currentUser;
+  User? get currentUser => _currentUser;
 
-  // Auth state changes stream
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  // Stream for auth state changes (simulated)
+  Stream<User?> get authStateChanges => _createAuthStream();
 
-  // Check if user exists in Firestore
-  Future<bool> _userExistsInFirestore(String userId) async {
-    final doc = await _firestore.collection('users').doc(userId).get();
-    return doc.exists;
+  // Check if user exists in local storage
+  Future<bool> _userExists(String userId) async {
+    final userData = await _secureStorage.read(key: 'user_$userId');
+    return userData != null;
   }
 
-  // Create user profile in Firestore
+  // Create user profile in local storage
   Future<void> _createUserProfile(User user, {String? name}) async {
-    await _firestore.collection('users').doc(user.uid).set({
+    final userData = {
       'uid': user.uid,
       'email': user.email,
       'displayName': name ?? user.displayName ?? 'Traveler',
       'photoURL': user.photoURL,
-      'createdAt': FieldValue.serverTimestamp(),
-      'lastLogin': FieldValue.serverTimestamp(),
+      'createdAt': DateTime.now().toIso8601String(),
+      'lastLogin': DateTime.now().toIso8601String(),
       'isGuest': false,
-      'carbonSaved': 0.0, // Total CO2 saved in kg
+      'carbonSaved': 0.0,
       'tripsCompleted': 0,
       'ecoScore': 0,
       'preferences': {
-        'transportMode': 'balanced', // balanced, eco-friendly, fastest
+        'transportMode': 'balanced',
         'notifications': true,
         'darkMode': true,
       },
-    });
+    };
+
+    await _secureStorage.write(
+      key: 'user_${user.uid}',
+      value: jsonEncode(userData),
+    );
+
+    // Store current user ID
+    await _secureStorage.write(key: 'current_user_id', value: user.uid);
   }
 
   // Update user profile
   Future<void> updateUserProfile(Map<String, dynamic> data) async {
-    final user = currentUser;
+    final user = _currentUser;
     if (user != null) {
-      await _firestore.collection('users').doc(user.uid).update(data);
+      final userData = await _getUserData(user.uid);
+      if (userData != null) {
+        userData.addAll(data);
+        userData['lastLogin'] = DateTime.now().toIso8601String();
+        await _secureStorage.write(
+          key: 'user_${user.uid}',
+          value: jsonEncode(userData),
+        );
+      }
     }
   }
 
   // Get user data
   Future<Map<String, dynamic>?> getUserData(String userId) async {
-    final doc = await _firestore.collection('users').doc(userId).get();
-    return doc.data();
+    return await _getUserData(userId);
   }
 
   // ========== EMAIL/PASSWORD AUTH ==========
@@ -63,23 +96,52 @@ class AuthService {
     required String name,
   }) async {
     try {
-      // Create user in Firebase Auth
-      final UserCredential result = await _auth.createUserWithEmailAndPassword(
+      // Simulate network delay
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      // Check if user already exists (simulated)
+      final existingUsers = await _getAllUsers();
+      if (existingUsers.any((user) => user['email'] == email)) {
+        throw 'An account already exists with this email.';
+      }
+
+      // Validate email
+      if (!_isValidEmail(email)) {
+        throw 'Invalid email address format.';
+      }
+
+      // Validate password
+      if (password.length < 6) {
+        throw 'Password should be at least 6 characters.';
+      }
+
+      // Create user with unique ID
+      final userId = _generateUserId();
+      final user = User(
+        uid: userId,
         email: email,
-        password: password,
+        displayName: name,
       );
 
-      // Update display name
-      await result.user?.updateDisplayName(name);
+      // Save password (in real app, this should be hashed!)
+      await _secureStorage.write(
+        key: 'password_$userId',
+        value: password,
+      );
 
-      // Create user profile in Firestore
-      await _createUserProfile(result.user!, name: name);
+      // Create user profile
+      await _createUserProfile(user, name: name);
 
-      return result.user;
+      // Set as current user
+      _currentUser = user;
+      await _secureStorage.write(key: 'current_user_id', value: userId);
+
+      return user;
     } catch (e) {
-      // ignore: avoid_print
-      print('Sign up error: $e');
-      throw _handleAuthError(e);
+      if (kDebugMode) {
+        print('Sign up error: $e');
+      }
+      throw e.toString();
     }
   }
 
@@ -88,19 +150,55 @@ class AuthService {
     required String password,
   }) async {
     try {
-      final UserCredential result = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+      // Simulate network delay
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      // Find user by email
+      final users = await _getAllUsers();
+      final userData = users.firstWhere(
+        (user) => user['email'] == email,
+        orElse: () => throw 'No account found with this email.',
       );
 
-      // Update last login time
-      await _updateLastLogin(result.user!.uid);
+      // Verify password (in real app, compare hashed passwords)
+      final storedPassword = await _secureStorage.read(
+        key: 'password_${userData['uid']}',
+      );
 
-      return result.user;
+      // Handle null storedPassword - this fixes the null safety error
+      if (storedPassword == null || storedPassword != password) {
+        throw 'Incorrect email or password.';
+      }
+
+      // Update last login
+      userData['lastLogin'] = DateTime.now().toIso8601String();
+      await _secureStorage.write(
+        key: 'user_${userData['uid']}',
+        value: jsonEncode(userData),
+      );
+
+      // Create user object - handle potential null values
+      final user = User(
+        uid: userData['uid'] as String? ?? '',
+        email: userData['email'] as String?,
+        displayName: userData['displayName'] as String?,
+        photoURL: userData['photoURL'] as String?,
+        isGuest: (userData['isGuest'] as bool?) ?? false,
+      );
+
+      // Set as current user
+      _currentUser = user;
+      await _secureStorage.write(
+        key: 'current_user_id',
+        value: userData['uid'],
+      );
+
+      return user;
     } catch (e) {
-      // ignore: avoid_print
-      print('Login error: $e');
-      throw _handleAuthError(e);
+      if (kDebugMode) {
+        print('Login error: $e');
+      }
+      throw e.toString();
     }
   }
 
@@ -108,70 +206,69 @@ class AuthService {
 
   Future<User?> signInWithGoogle() async {
     try {
-      // Trigger Google Sign-In flow
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null;
+      // Simulate Google sign-in flow
+      await Future.delayed(const Duration(seconds: 1));
 
-      // Get authentication details
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      // Create Firebase credential
-      final OAuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+      // Generate user data for Google sign-in
+      final userId = _generateUserId();
+      final user = User(
+        uid: userId,
+        email: 'google_user_${_random.nextInt(1000)}@example.com',
+        displayName: 'Google User ${_random.nextInt(1000)}',
+        photoURL: 'https://ui-avatars.com/api/?name=Google+User',
       );
 
-      // Sign in to Firebase with Google credentials
-      final UserCredential result =
-          await _auth.signInWithCredential(credential);
-
-      // Check if user exists in Firestore, if not create profile
-      if (!await _userExistsInFirestore(result.user!.uid)) {
-        await _createUserProfile(result.user!);
+      // Check if user exists, if not create profile
+      if (!await _userExists(userId)) {
+        await _createUserProfile(user);
       } else {
-        await _updateLastLogin(result.user!.uid);
+        await _updateLastLogin(userId);
       }
 
-      return result.user;
+      // Set as current user
+      _currentUser = user;
+      await _secureStorage.write(key: 'current_user_id', value: userId);
+
+      return user;
     } catch (e) {
-      // ignore: avoid_print
-      print('Google sign in error: $e');
-      throw _handleAuthError(e);
+      if (kDebugMode) {
+        print('Google sign in error: $e');
+      }
+      throw 'Google sign in failed: $e';
     }
   }
 
   Future<User?> signInWithFacebook() async {
     try {
-      // Trigger Facebook login flow
-      final LoginResult result = await FacebookAuth.instance.login(
-        permissions: ['email', 'public_profile'],
+      // Simulate Facebook sign-in flow
+      await Future.delayed(const Duration(seconds: 1));
+
+      // Generate user data for Facebook sign-in
+      final userId = _generateUserId();
+      final user = User(
+        uid: userId,
+        email: 'facebook_user_${_random.nextInt(1000)}@example.com',
+        displayName: 'Facebook User ${_random.nextInt(1000)}',
+        photoURL: 'https://ui-avatars.com/api/?name=Facebook+User',
       );
 
-      if (result.status == LoginStatus.success) {
-        // Create Firebase credential
-        final OAuthCredential credential = FacebookAuthProvider.credential(
-          result.accessToken!.token,
-        );
-
-        // Sign in to Firebase with Facebook credentials
-        final UserCredential userCredential =
-            await _auth.signInWithCredential(credential);
-
-        // Check if user exists in Firestore, if not create profile
-        if (!await _userExistsInFirestore(userCredential.user!.uid)) {
-          await _createUserProfile(userCredential.user!);
-        } else {
-          await _updateLastLogin(userCredential.user!.uid);
-        }
-
-        return userCredential.user;
+      // Check if user exists, if not create profile
+      if (!await _userExists(userId)) {
+        await _createUserProfile(user);
+      } else {
+        await _updateLastLogin(userId);
       }
-      return null;
+
+      // Set as current user
+      _currentUser = user;
+      await _secureStorage.write(key: 'current_user_id', value: userId);
+
+      return user;
     } catch (e) {
-      // ignore: avoid_print
-      print('Facebook sign in error: $e');
-      throw _handleAuthError(e);
+      if (kDebugMode) {
+        print('Facebook sign in error: $e');
+      }
+      throw 'Facebook sign in failed: $e';
     }
   }
 
@@ -179,15 +276,22 @@ class AuthService {
 
   Future<User?> loginAsGuest() async {
     try {
-      // Create anonymous user
-      final UserCredential result = await _auth.signInAnonymously();
+      // Simulate guest login
+      await Future.delayed(const Duration(milliseconds: 500));
 
-      // Create guest profile in Firestore
-      await _firestore.collection('users').doc(result.user!.uid).set({
-        'uid': result.user!.uid,
+      final userId = _generateUserId();
+      final user = User(
+        uid: userId,
+        displayName: 'Eco Traveler',
+        isGuest: true,
+      );
+
+      // Create guest profile
+      final guestData = {
+        'uid': userId,
         'isGuest': true,
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastLogin': FieldValue.serverTimestamp(),
+        'createdAt': DateTime.now().toIso8601String(),
+        'lastLogin': DateTime.now().toIso8601String(),
         'displayName': 'Eco Traveler',
         'carbonSaved': 0.0,
         'tripsCompleted': 0,
@@ -197,13 +301,23 @@ class AuthService {
           'notifications': false,
           'darkMode': true,
         },
-      });
+      };
 
-      return result.user;
+      await _secureStorage.write(
+        key: 'user_$userId',
+        value: jsonEncode(guestData),
+      );
+
+      // Set as current user
+      _currentUser = user;
+      await _secureStorage.write(key: 'current_user_id', value: userId);
+
+      return user;
     } catch (e) {
-      // ignore: avoid_print
-      print('Guest login error: $e');
-      throw _handleAuthError(e);
+      if (kDebugMode) {
+        print('Guest login error: $e');
+      }
+      throw 'Guest login failed: $e';
     }
   }
 
@@ -211,11 +325,26 @@ class AuthService {
 
   Future<void> resetPassword(String email) async {
     try {
-      await _auth.sendPasswordResetEmail(email: email);
+      // Simulate password reset email
+      await Future.delayed(const Duration(seconds: 1));
+
+      // Check if email exists
+      final users = await _getAllUsers();
+      final userExists = users.any((user) => user['email'] == email);
+
+      if (!userExists) {
+        throw 'No account found with this email.';
+      }
+
+      // In a real app, you would send an email here
+      if (kDebugMode) {
+        print('Password reset email would be sent to: $email');
+      }
     } catch (e) {
-      // ignore: avoid_print
-      print('Password reset error: $e');
-      throw _handleAuthError(e);
+      if (kDebugMode) {
+        print('Password reset error: $e');
+      }
+      throw e.toString();
     }
   }
 
@@ -223,21 +352,54 @@ class AuthService {
 
   Future<void> updateEmail(String newEmail) async {
     try {
-      await currentUser?.verifyBeforeUpdateEmail(newEmail);
+      // Validate email
+      if (!_isValidEmail(newEmail)) {
+        throw 'Invalid email address format.';
+      }
+
+      // Check if email is already in use
+      final users = await _getAllUsers();
+      if (users.any((user) => user['email'] == newEmail)) {
+        throw 'An account already exists with this email.';
+      }
+
+      final user = _currentUser;
+      if (user != null) {
+        final userData = await _getUserData(user.uid);
+        if (userData != null) {
+          userData['email'] = newEmail;
+          await _secureStorage.write(
+            key: 'user_${user.uid}',
+            value: jsonEncode(userData),
+          );
+        }
+      }
     } catch (e) {
-      // ignore: avoid_print
-      print('Update email error: $e');
-      throw _handleAuthError(e);
+      if (kDebugMode) {
+        print('Update email error: $e');
+      }
+      throw e.toString();
     }
   }
 
   Future<void> updatePassword(String newPassword) async {
     try {
-      await currentUser?.updatePassword(newPassword);
+      if (newPassword.length < 6) {
+        throw 'Password should be at least 6 characters.';
+      }
+
+      final user = _currentUser;
+      if (user != null) {
+        await _secureStorage.write(
+          key: 'password_${user.uid}',
+          value: newPassword,
+        );
+      }
     } catch (e) {
-      // ignore: avoid_print
-      print('Update password error: $e');
-      throw _handleAuthError(e);
+      if (kDebugMode) {
+        print('Update password error: $e');
+      }
+      throw e.toString();
     }
   }
 
@@ -245,12 +407,12 @@ class AuthService {
 
   Future<void> signOut() async {
     try {
-      await _auth.signOut();
-      await _googleSignIn.signOut();
-      await FacebookAuth.instance.logOut();
+      _currentUser = null;
+      await _secureStorage.delete(key: 'current_user_id');
     } catch (e) {
-      // ignore: avoid_print
-      print('Sign out error: $e');
+      if (kDebugMode) {
+        print('Sign out error: $e');
+      }
       rethrow;
     }
   }
@@ -259,52 +421,104 @@ class AuthService {
 
   Future<void> deleteAccount() async {
     try {
-      final user = currentUser;
+      final user = _currentUser;
       if (user != null) {
-        // Delete from Firestore
-        await _firestore.collection('users').doc(user.uid).delete();
+        // Delete user data
+        await _secureStorage.delete(key: 'user_${user.uid}');
+        await _secureStorage.delete(key: 'password_${user.uid}');
+        await _secureStorage.delete(key: 'current_user_id');
 
-        // Delete from Firebase Auth
-        await user.delete();
+        _currentUser = null;
       }
     } catch (e) {
-      // ignore: avoid_print
-      print('Delete account error: $e');
-      throw _handleAuthError(e);
+      if (kDebugMode) {
+        print('Delete account error: $e');
+      }
+      throw 'Failed to delete account: $e';
+    }
+  }
+
+  // ========== INITIALIZATION ==========
+
+  Future<void> initialize() async {
+    try {
+      // Check for existing session
+      final userId = await _secureStorage.read(key: 'current_user_id');
+      if (userId != null) {
+        final userData = await _getUserData(userId);
+        if (userData != null) {
+          _currentUser = User(
+            uid: userData['uid'] as String? ?? '',
+            email: userData['email'] as String?,
+            displayName: userData['displayName'] as String?,
+            photoURL: userData['photoURL'] as String?,
+            isGuest: (userData['isGuest'] as bool?) ?? false,
+          );
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Initialization error: $e');
+      }
     }
   }
 
   // ========== HELPER METHODS ==========
 
   Future<void> _updateLastLogin(String userId) async {
-    await _firestore.collection('users').doc(userId).update({
-      'lastLogin': FieldValue.serverTimestamp(),
-    });
+    final userData = await _getUserData(userId);
+    if (userData != null) {
+      userData['lastLogin'] = DateTime.now().toIso8601String();
+      await _secureStorage.write(
+        key: 'user_$userId',
+        value: jsonEncode(userData),
+      );
+    }
   }
 
-  String _handleAuthError(dynamic error) {
-    if (error is FirebaseAuthException) {
-      switch (error.code) {
-        case 'invalid-email':
-          return 'Invalid email address format.';
-        case 'user-disabled':
-          return 'This account has been disabled.';
-        case 'user-not-found':
-          return 'No account found with this email.';
-        case 'wrong-password':
-          return 'Incorrect password.';
-        case 'email-already-in-use':
-          return 'An account already exists with this email.';
-        case 'weak-password':
-          return 'Password should be at least 6 characters.';
-        case 'operation-not-allowed':
-          return 'Email/password accounts are not enabled.';
-        case 'network-request-failed':
-          return 'Network error. Please check your connection.';
-        default:
-          return 'Authentication failed: ${error.message}';
+  Future<Map<String, dynamic>?> _getUserData(String userId) async {
+    final data = await _secureStorage.read(key: 'user_$userId');
+    if (data != null) {
+      return jsonDecode(data) as Map<String, dynamic>;
+    }
+    return null;
+  }
+
+  Future<List<Map<String, dynamic>>> _getAllUsers() async {
+    final allKeys = await _secureStorage.readAll();
+    final users = <Map<String, dynamic>>[];
+
+    for (final entry in allKeys.entries) {
+      if (entry.key.startsWith('user_')) {
+        final data = entry.value;
+        final userData = jsonDecode(data) as Map<String, dynamic>;
+        users.add(userData);
       }
     }
-    return 'An unexpected error occurred. Please try again.';
+
+    return users;
+  }
+
+  String _generateUserId() {
+    return 'user_${DateTime.now().millisecondsSinceEpoch}_${_random.nextInt(10000)}';
+  }
+
+  bool _isValidEmail(String email) {
+    final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    return emailRegex.hasMatch(email);
+  }
+
+  Stream<User?> _createAuthStream() async* {
+    // Yield initial user state
+    yield _currentUser;
+
+    // In a real implementation, you might listen to storage changes
+    // For now, we'll just return a stream that yields the current user
+    final controller = StreamController<User?>();
+
+    // Close the controller since we're not using it for real updates
+    controller.close();
+
+    yield* controller.stream;
   }
 }
